@@ -31,7 +31,7 @@ app.add_middleware(
 
 # Register routes
 app.include_router(analyze_router, prefix="/api", tags=["Analysis"])
-app.include_router(barcode_router, tags=["Barcode"])
+app.include_router(barcode_router, prefix="/api", tags=["Barcode"])
 
 
 @app.get("/")

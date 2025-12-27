@@ -68,6 +68,64 @@ class ExplanationGenerator:
             print(f"⚠️ AI initialization failed: {e}. Using rule-based fallback.")
             self.use_ai = False
     
+    def _get_language_instruction(self, language: str) -> str:
+        """Get language-specific instruction for AI prompts."""
+        language_names = {
+            "en": "English",
+            "hi": "Hindi (हिन्दी)",
+            "bn": "Bengali (বাংলা)",
+            "ta": "Tamil (தமிழ்)",
+            "te": "Telugu (తెలుగు)",
+            "mr": "Marathi (मराठी)",
+            "gu": "Gujarati (ગુજરાતી)",
+            "kn": "Kannada (ಕನ್ನಡ)",
+            "ml": "Malayalam (മലയാളം)",
+            "pa": "Punjabi (ਪੰਜਾਬੀ)"
+        }
+        lang_name = language_names.get(language, "English")
+        return f"\n\nIMPORTANT: Respond in {lang_name}. Use native script and natural language."
+    
+    def _translate_text(self, text: str, language: str) -> str:
+        """Translate text to target language using AI."""
+        if not self.use_ai or language == "en":
+            return text
+        
+        try:
+            lang_instruction = self._get_language_instruction(language)
+            prompt = f"Translate the following text to the target language. Preserve formatting and meaning:\n\n{text}{lang_instruction}"
+            
+            if self.ai_provider == "gemini":
+                response = self.model.generate_content(prompt)
+                return response.text
+            elif self.ai_provider == "groq":
+                response = self.client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=self.ai_model
+                )
+                return response.choices[0].message.content
+            elif self.ai_provider == "deepseek":
+                response = self.client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=self.ai_model
+                )
+                return response.choices[0].message.content
+        except Exception as e:
+            print(f"⚠️ Translation failed: {e}")
+            return text  # Return original if translation fails
+    
+    def _translate_followups(self, followups: List[FollowUpQuestion], language: str) -> List[FollowUpQuestion]:
+        """Translate follow-up questions to target language."""
+        if not self.use_ai or language == "en":
+            return followups
+        
+        translated = []
+        for fq in followups:
+            translated.append(FollowUpQuestion(
+                question=self._translate_text(fq.question, language),
+                context=self._translate_text(fq.context, language)
+            ))
+        return translated
+    
     def generate_summary(
         self,
         overall_signal: str,
@@ -356,11 +414,17 @@ Return as JSON array:
         self,
         reasoning_result: Dict,
         intent_result: Dict,
-        include_eli5: bool = False
+        include_eli5: bool = False,
+        language: str = "en"
     ) -> ExplanationOutput:
         """
         Main pipeline: Generate complete explanation package.
+        
+        Supports multi-language output for Indian languages.
         """
+        # Get language suffix for prompts
+        language_instruction = self._get_language_instruction(language)
+        
         # Summary
         summary = self.generate_summary(
             reasoning_result["overall_signal"],
@@ -368,11 +432,19 @@ Return as JSON array:
             intent_result["context_summary"]
         )
         
+        # If non-English, translate summary
+        if language != "en" and self.use_ai:
+            summary = self._translate_text(summary, language)
+        
         # Detailed insights (formatted)
         detailed_insights = [
             f"{insight['icon']} **{insight['title']}**: {insight['explanation']}"
             for insight in reasoning_result["insights"]
         ]
+        
+        # Translate insights if needed
+        if language != "en" and self.use_ai:
+            detailed_insights = [self._translate_text(ins, language) for ins in detailed_insights]
         
         # ELI5 (optional)
         eli5 = None
@@ -381,6 +453,8 @@ Return as JSON array:
                 reasoning_result["insights"],
                 reasoning_result["trade_offs"]
             )
+            if language != "en" and self.use_ai and eli5:
+                eli5 = self._translate_text(eli5, language)
         
         # Follow-ups
         follow_ups = self.generate_follow_up_questions(
@@ -388,6 +462,10 @@ Return as JSON array:
             intent_result["food_context"],
             intent_result["primary_intent"]
         )
+        
+        # Translate follow-ups if needed
+        if language != "en" and self.use_ai:
+            follow_ups = self._translate_followups(follow_ups, language)
         
         return ExplanationOutput(
             summary=summary,

@@ -28,6 +28,7 @@ class AnalyzeRequest(BaseModel):
     user_question: Optional[str] = None
     include_eli5: bool = False
     user_preferences: Optional[List[str]] = None  # Session-based preferences
+    language: Optional[str] = "en"  # Language code (en, hi, bn, ta, etc.)
 
 
 class AnalyzeResponse(BaseModel):
@@ -91,7 +92,8 @@ async def analyze_food(request: AnalyzeRequest):
         explanation_result = explanation_generator.generate_complete_explanation(
             reasoning_result=reasoning_dict,
             intent_result=intent_result,
-            include_eli5=request.include_eli5
+            include_eli5=request.include_eli5,
+            language=request.language or "en"
         )
         
         # Assemble final response

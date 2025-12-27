@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Mic, MicOff, Volume2 } from 'lucide-react'
+import { getSelectedLanguage } from '../utils/languageSupport'
 
 interface VoiceInputProps {
   onTranscript: (text: string) => void
@@ -12,8 +13,21 @@ export default function VoiceInput({ onTranscript, enableTTS = false, onVoiceCom
   const [isSupported, setIsSupported] = useState(false)
   const [recognition, setRecognition] = useState<any>(null)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [currentLanguage, setCurrentLanguage] = useState(getSelectedLanguage())
 
   useEffect(() => {
+    // Listen for language changes
+    const handleLanguageChange = (e: any) => {
+      const newLang = e.detail
+      setCurrentLanguage(newLang)
+      
+      // Update recognition language if active
+      if (recognition) {
+        recognition.lang = newLang.voiceCode
+      }
+    }
+    window.addEventListener('languageChange', handleLanguageChange)
+    
     // Check if Web Speech API is supported
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -22,7 +36,7 @@ export default function VoiceInput({ onTranscript, enableTTS = false, onVoiceCom
         const recognitionInstance = new SpeechRecognition()
         recognitionInstance.continuous = true
         recognitionInstance.interimResults = true
-        recognitionInstance.lang = 'en-US'
+        recognitionInstance.lang = currentLanguage.voiceCode
 
         recognitionInstance.onresult = (event: any) => {
           const transcript = Array.from(event.results)
@@ -49,7 +63,13 @@ export default function VoiceInput({ onTranscript, enableTTS = false, onVoiceCom
 
         setRecognition(recognitionInstance)
         setIsSupported(true)
+      } else {
+        setIsSupported(false)
       }
+    }
+    
+    return () => {
+      window.removeEventListener('languageChange', handleLanguageChange)
     }
   }, [onTranscript])
 

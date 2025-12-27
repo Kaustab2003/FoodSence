@@ -1,16 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Camera, FileText, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/router'
 import VoiceInput from '../components/VoiceInput'
 import PhotoCapture from '../components/PhotoCapture'
 import BarcodeScanner from '../components/BarcodeScanner'
+import LanguageSelector from '../components/LanguageSelector'
 import { trackAnalyzedProduct } from '../utils/userPreferences'
+import { getSelectedLanguage } from '../utils/languageSupport'
 
 export default function Home() {
   const router = useRouter()
   const [ingredients, setIngredients] = useState('')
   const [productName, setProductName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [currentLanguage, setCurrentLanguage] = useState(getSelectedLanguage())
+  
+  useEffect(() => {
+    // Listen for language changes
+    const handleLanguageChange = (e: any) => {
+      setCurrentLanguage(e.detail)
+    }
+    window.addEventListener('languageChange', handleLanguageChange)
+    
+    return () => {
+      window.removeEventListener('languageChange', handleLanguageChange)
+    }
+  }, [])
 
   const handleAnalyze = async () => {
     if (!ingredients.trim()) {
@@ -85,6 +100,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
       <div className="container mx-auto px-4 py-12">
+        {/* Header with Language Selector */}
+        <div className="flex justify-end mb-4">
+          <LanguageSelector />
+        </div>
+        
         {/* Header */}
         <div className="text-center mb-12 animate-fade-in">
           <div className="flex items-center justify-center mb-4">

@@ -7,6 +7,7 @@ import HealthSignal from '../components/HealthSignal'
 import ConfidenceBar from '../components/ConfidenceBar'
 import SurpriseScore from '../components/SurpriseScore'
 import { getPersonalizedIntents, trackFollowUpClick } from '../utils/userPreferences'
+import { getSelectedLanguage } from '../utils/languageSupport'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -31,14 +32,18 @@ export default function AnalyzePage() {
 
       // PATENT FEATURE: Get personalized intent hints
       const userPreferences = getPersonalizedIntents()
+      
+      // Get selected language
+      const selectedLanguage = getSelectedLanguage()
 
       try {
-        // Call backend API with preferences
+        // Call backend API with preferences and language
         const response = await axios.post(`${API_URL}/api/analyze`, {
           ingredients,
           product_name: productName,
           include_eli5: false,
-          user_preferences: userPreferences
+          user_preferences: userPreferences,
+          language: selectedLanguage.code
         })
 
         setAnalysisData(response.data.data)

@@ -19,7 +19,7 @@ class BarcodeResponse(BaseModel):
     found: bool
 
 
-@router.get("/api/barcode/{barcode}")
+@router.get("/barcode/{barcode}")
 async def lookup_barcode(barcode: str):
     """
     Lookup product by barcode from Open Food Facts.
