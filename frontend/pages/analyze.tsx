@@ -139,11 +139,11 @@ export default function AnalyzePage() {
           Analyze Another Product
         </button>
 
-        {/* Context Summary */}
-        {analysisData.context && (
+        {/* Context Summary - From ingredient OR nutrition analysis */}
+        {(analysisData.context || analysisData.nutrition_analysis) && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6 animate-fade-in">
             <p className="text-gray-700 text-lg">
-              {analysisData.context.summary}
+              {analysisData.context?.summary || analysisData.nutrition_analysis?.health_summary}
             </p>
           </div>
         )}
@@ -156,15 +156,27 @@ export default function AnalyzePage() {
           />
         )}
 
-        {/* Health Signal */}
-        {analysisData.health_signal && (
+        {/* Health Signal - From ingredient OR nutrition analysis */}
+        {(analysisData.health_signal || analysisData.nutrition_analysis) && (
           <div className="mb-6 animate-slide-up">
             <HealthSignal
-              level={analysisData.health_signal.level}
-              icon={analysisData.health_signal.icon}
+              level={analysisData.health_signal?.level || (
+                analysisData.nutrition_analysis?.classification === 'Good' ? 'likely_safe' :
+                analysisData.nutrition_analysis?.classification === 'Bad' ? 'potential_risk' :
+                'moderate_concern'
+              )}
+              icon={analysisData.health_signal?.icon || (
+                analysisData.nutrition_analysis?.classification === 'Good' ? '🟢' :
+                analysisData.nutrition_analysis?.classification === 'Bad' ? '🔴' :
+                '🟡'
+              )}
             />
             <div className="mt-3">
-              <ConfidenceBar confidence={analysisData.health_signal.confidence} />
+              <ConfidenceBar confidence={
+                analysisData.health_signal?.confidence || 
+                (analysisData.nutrition_analysis?.confidence === 'High' ? 0.9 :
+                 analysisData.nutrition_analysis?.confidence === 'Medium' ? 0.6 : 0.3)
+              } />
             </div>
           </div>
         )}
@@ -198,8 +210,8 @@ export default function AnalyzePage() {
           </div>
         )}
 
-        {/* Trade-Offs */}
-        {analysisData.trade_offs && (
+        {/* Trade-Offs - From ingredient OR nutrition analysis */}
+        {(analysisData.trade_offs || analysisData.nutrition_analysis) && (
           <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
             <h3 className="text-xl font-semibold mb-4 text-gray-900">
               ⚖️ Trade-Offs
@@ -208,9 +220,9 @@ export default function AnalyzePage() {
               {/* Benefits */}
               <div>
                 <h4 className="font-medium text-green-700 mb-2">👍 Benefits</h4>
-                {analysisData.trade_offs.benefits.length > 0 ? (
+                {(analysisData.trade_offs?.benefits?.length > 0 || analysisData.nutrition_analysis?.key_positives?.length > 0) ? (
                 <ul className="space-y-1 text-sm text-gray-700">
-                  {analysisData.trade_offs.benefits.map((benefit: string, idx: number) => (
+                  {(analysisData.trade_offs?.benefits || analysisData.nutrition_analysis?.key_positives || []).map((benefit: string, idx: number) => (
                     <li key={idx} className="flex items-start">
                       <span className="text-green-500 mr-2">•</span>
                       {benefit}
@@ -225,9 +237,9 @@ export default function AnalyzePage() {
             {/* Downsides */}
             <div>
               <h4 className="font-medium text-red-700 mb-2">⚠️ Downsides</h4>
-              {analysisData.trade_offs.downsides.length > 0 ? (
+              {(analysisData.trade_offs?.downsides?.length > 0 || analysisData.nutrition_analysis?.key_negatives?.length > 0) ? (
                 <ul className="space-y-1 text-sm text-gray-700">
-                  {analysisData.trade_offs.downsides.map((downside: string, idx: number) => (
+                  {(analysisData.trade_offs?.downsides || analysisData.nutrition_analysis?.key_negatives || []).map((downside: string, idx: number) => (
                     <li key={idx} className="flex items-start">
                       <span className="text-red-500 mr-2">•</span>
                       {downside}
