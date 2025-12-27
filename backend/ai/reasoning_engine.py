@@ -50,7 +50,7 @@ class ReasoningEngine:
     """
     
     def __init__(self):
-        self.max_insights = 3  # Core constraint: only 3 insights
+        self.max_insights = 100  # Analyze ALL ingredients for comprehensive report
     
     def analyze_ingredients(
         self,
@@ -167,11 +167,11 @@ class ReasoningEngine:
         intent: UserIntent
     ) -> List[Insight]:
         """
-        Generate exactly 3 human-readable insights.
+        Generate insights for ALL matched ingredients.
         """
         insights = []
         
-        for ing in ingredients[:3]:  # Max 3
+        for ing in ingredients:  # Analyze ALL ingredients
             # Determine concern level
             concern_level = "neutral"
             icon = "ℹ️"
@@ -211,8 +211,8 @@ class ReasoningEngine:
                 icon=icon
             ))
         
-        # Fill with generic insights if less than 3 matched
-        while len(insights) < 3:
+        # No need to fill with generic insights - we have all real ingredients
+        if len(insights) == 0:
             insights.append(Insight(
                 title="Limited Information",
                 explanation="Some ingredients in this product are not in our database yet.",

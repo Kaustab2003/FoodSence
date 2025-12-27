@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import axios from 'axios'
 import { ArrowLeft, Lightbulb } from 'lucide-react'
 import InsightCard from '../components/InsightCard'
+import DetailedIngredientCard from '../components/DetailedIngredientCard'
 import HealthSignal from '../components/HealthSignal'
 import ConfidenceBar from '../components/ConfidenceBar'
 import SurpriseScore from '../components/SurpriseScore'
@@ -93,10 +94,17 @@ export default function AnalyzePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center px-4">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-green-600 mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600">Analyzing ingredients...</p>
-          <p className="text-sm text-gray-500 mt-2">AI is thinking for you 🧠</p>
+          <p className="text-xl font-semibold text-gray-800 mb-2">Analyzing ingredients with AI...</p>
+          <p className="text-sm text-gray-600 mb-4">🧠 Comprehensive analysis in progress</p>
+          <div className="bg-white rounded-lg p-4 shadow-md max-w-md mx-auto">
+            <p className="text-xs text-gray-500">
+              ⏱️ Analyzing all ingredients may take 30-60 seconds
+              <br />
+              🔍 Each ingredient gets detailed health, safety, and usage analysis
+            </p>
+          </div>
         </div>
       </div>
     )
@@ -144,11 +152,33 @@ export default function AnalyzePage() {
           </div>
         </div>
 
-        {/* Main Insights */}
+        {/* Comprehensive Ingredient Analysis - ALL INGREDIENTS */}
+        {analysisData.detailed_insights && analysisData.detailed_insights.length > 0 && (
+          <div className="mb-8">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl p-6 mb-6 shadow-lg">
+              <h2 className="text-3xl font-bold mb-2 flex items-center">
+                <span className="mr-3">📋</span>
+                Complete Ingredient Analysis
+              </h2>
+              <p className="text-blue-100 text-lg">
+                Detailed AI-powered breakdown of all {analysisData.detailed_insights.length} ingredients • 
+                Each ingredient analyzed for health effects, safety, and usage
+              </p>
+            </div>
+            <div className="space-y-4">
+              {analysisData.detailed_insights.map((detail: string, idx: number) => (
+                <DetailedIngredientCard key={idx} content={detail} index={idx} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Main Insights - Top Priorities */}
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            What Matters Most
+            🎯 Top Priority Concerns
           </h2>
+          <p className="text-gray-600 mb-4">Quick summary of the most important findings</p>
           <div className="space-y-4">
             {analysisData.insights.map((insight: any, idx: number) => (
               <InsightCard key={idx} insight={insight} />

@@ -8,6 +8,7 @@ INNOVATION: Adaptive explanation complexity for cognitive load reduction.
 """
 
 import os
+import time
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -67,6 +68,104 @@ class ExplanationGenerator:
         except Exception as e:
             print(f"⚠️ AI initialization failed: {e}. Using rule-based fallback.")
             self.use_ai = False
+    
+    def _call_ai_with_retry(self, prompt: str, max_retries: int = 3) -> str:
+        """
+        Call AI with retry logic and multi-provider fallback.
+        Tries: Primary Provider → Groq → DeepSeek
+        """
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # Try primary provider
+                if self.ai_provider == "gemini" and hasattr(self, 'model'):
+                    # Configure request with timeout
+                    generation_config = {
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                        "top_k": 40,
+                        "max_output_tokens": 8192,
+                    }
+                    
+                    safety_settings = [
+                        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                    ]
+                    
+                    response = self.model.generate_content(
+                        prompt,
+                        generation_config=generation_config,
+                        safety_settings=safety_settings
+                    )
+                    return response.text
+                    
+                elif self.ai_provider == "groq" and hasattr(self, 'client'):
+                    response = self.client.chat.completions.create(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=self.ai_model
+                    )
+                    return response.choices[0].message.content
+                    
+                elif self.ai_provider == "deepseek" and hasattr(self, 'client'):
+                    response = self.client.chat.completions.create(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=self.ai_model
+                    )
+                    return response.choices[0].message.content
+                    
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ Attempt {attempt + 1}/{max_retries} failed: {str(e)[:200]}")
+                
+                if attempt < max_retries - 1:
+                    wait_time = min(2 ** attempt, 5)  # Max 5 seconds wait
+                    print(f"⏳ Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ All {max_retries} attempts exhausted")
+        
+        # All retries failed - try fallback providers
+        print("🔄 Primary provider failed, trying fallback providers...")
+        
+        # Try Groq as fallback
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key and self.ai_provider != "groq":
+            try:
+                print("🔄 Trying Groq fallback...")
+                from groq import Groq
+                client = Groq(api_key=groq_key)
+                response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="llama-3.1-70b-versatile"
+                )
+                print("✅ Groq fallback succeeded")
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"⚠️ Groq fallback failed: {e}")
+        
+        # Try DeepSeek as final fallback
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_key and self.ai_provider != "deepseek":
+            try:
+                print("🔄 Trying DeepSeek fallback...")
+                import openai
+                client = openai.OpenAI(
+                    api_key=deepseek_key,
+                    base_url="https://api.deepseek.com"
+                )
+                response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="deepseek-chat"
+                )
+                print("✅ DeepSeek fallback succeeded")
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"⚠️ DeepSeek fallback failed: {e}")
+        
+        raise Exception(f"All AI providers failed. Last error: {last_error}")
     
     def _get_language_instruction(self, language: str) -> str:
         """Get language-specific instruction for AI prompts."""
@@ -415,10 +514,11 @@ Return as JSON array:
         reasoning_result: Dict,
         intent_result: Dict,
         include_eli5: bool = False,
-        language: str = "en"
+        language: str = "en",
+        original_ingredients: List[str] = None
     ) -> ExplanationOutput:
         """
-        Main pipeline: Generate complete explanation package.
+        Main pipeline: Generate complete explanation package with DETAILED ingredient breakdown.
         
         Supports multi-language output for Indian languages.
         """
@@ -436,15 +536,12 @@ Return as JSON array:
         if language != "en" and self.use_ai:
             summary = self._translate_text(summary, language)
         
-        # Detailed insights (formatted)
-        detailed_insights = [
-            f"{insight['icon']} **{insight['title']}**: {insight['explanation']}"
-            for insight in reasoning_result["insights"]
-        ]
-        
-        # Translate insights if needed
-        if language != "en" and self.use_ai:
-            detailed_insights = [self._translate_text(ins, language) for ins in detailed_insights]
+        # Generate DETAILED insights for ALL ingredients using AI
+        detailed_insights = self._generate_detailed_ingredient_analysis(
+            reasoning_result["insights"],
+            language,
+            original_ingredients
+        )
         
         # ELI5 (optional)
         eli5 = None
@@ -473,6 +570,150 @@ Return as JSON array:
             eli5_explanation=eli5,
             follow_up_questions=follow_ups
         )
+    
+    def _generate_detailed_ingredient_analysis(
+        self,
+        insights: List[Dict],
+        language: str = "en",
+        original_ingredients: List[str] = None
+    ) -> List[str]:
+        """
+        Generate comprehensive analysis for EVERY ingredient using AI.
+        Uses original ingredient list to ensure ALL ingredients are analyzed.
+        """
+        if not self.use_ai:
+            # Fallback to basic formatting
+            return [
+                f"{insight['icon']} **{insight['title']}**: {insight['explanation']}"
+                for insight in insights
+            ]
+        
+        # USE ORIGINAL INGREDIENT LIST if provided (bypasses mock database limitations)
+        if original_ingredients and len(original_ingredients) > 0:
+            all_ingredients = [{"name": ing.strip()} for ing in original_ingredients]
+            print(f"📝 Analyzing {len(all_ingredients)} ingredients from original list")
+        else:
+            # Fallback: Extract from insights
+            all_ingredients = []
+            for insight in insights:
+                title = insight.get("title", "")
+                if "–" in title:
+                    ingredient = title.split("–")[0].strip()
+                else:
+                    ingredient = title.strip().replace("Limited Information", "").strip()
+                
+                if ingredient and ingredient != "":
+                    all_ingredients.append({"name": ingredient})
+        
+        if not all_ingredients:
+            return []
+        
+        # Build comprehensive prompt for AI - analyze ALL ingredients
+        lang_instruction = self._get_language_instruction(language)
+        
+        print(f"🔍 Starting AI analysis for {len(all_ingredients)} ingredients")
+        print(f"📋 Ingredient list: {[ing['name'] for ing in all_ingredients][:10]}")
+        
+        prompt = f"""You are a food safety and nutrition expert analyzing ingredients for a consumer health app.
+
+TASK: Provide COMPLETE, DETAILED analysis for EVERY SINGLE ingredient below.
+
+INGREDIENT LIST (Total: {len(all_ingredients)}):
+{chr(10).join([f"{i+1}. {ing['name']}" for i, ing in enumerate(all_ingredients)])}
+
+CRITICAL REQUIREMENTS:
+✓ Analyze ALL {len(all_ingredients)} ingredients above (count them in your response)
+✓ Do NOT skip any ingredient, even if common (butter, eggs, sugar, etc.)
+✓ Use this EXACT format for EACH ingredient:
+
+### [Full Ingredient Name]
+**What it is**: [1-2 sentences: common name, E-code if applicable, category (preservative/sweetener/etc.)]
+**Health Effects**: 
+  - ✅ Benefits: [List 2-3 specific health benefits, or \"Primarily functional\" if minimal]
+  - ⚠️ Concerns: [List 2-3 specific health concerns, or \"None known at normal levels\"]
+**Safety**: [FDA/FSSAI approval status, safe daily limits if known, who should avoid]
+**Usage in Food**: [Why manufacturers use it, what products commonly contain it]
+**Final Verdict**: [Choose ONE: ✅ Generally Safe | ⚠️ Use Moderately | ❌ Limit/Avoid] + [1 sentence explanation]
+
+---
+
+EXAMPLE FORMAT:
+### Butter
+**What it is**: Natural dairy fat from cow's milk, rich in saturated fats and fat-soluble vitamins A, D, E, K.
+**Health Effects**: 
+  - ✅ Benefits: Contains vitamins A, D, E, K; provides energy; natural source of conjugated linoleic acid (CLA)
+  - ⚠️ Concerns: High in saturated fat (7g per tbsp); excessive intake linked to elevated LDL cholesterol
+**Safety**: FSSAI approved; safe in moderation (1-2 tablespoons/day); avoid if lactose intolerant or dairy allergic
+**Usage in Food**: Adds rich flavor, moisture, and tender texture to baked goods; traditional cooking fat
+**Final Verdict**: ⚠️ Use Moderately - Enjoy in small amounts as part of a balanced diet; saturated fat content requires moderation
+
+---
+
+NOW ANALYZE ALL {len(all_ingredients)} INGREDIENTS ABOVE IN THIS EXACT FORMAT.
+Do not summarize or group ingredients - each needs individual analysis.{lang_instruction}"""
+
+        try:
+            # Try AI with retry logic and fallback providers (2 attempts max)
+            full_analysis = self._call_ai_with_retry(prompt, max_retries=2)
+            
+            if not full_analysis or len(full_analysis.strip()) < 50:
+                raise Exception(f"AI returned empty or too short response: {len(full_analysis)} chars")
+            
+            print(f"✅ AI response received: {len(full_analysis)} characters")
+            
+            # Split by ingredient headings
+            detailed_insights = []
+            sections = full_analysis.split("###")
+            for section in sections[1:]:  # Skip first empty section
+                section = section.strip()
+                if section:
+                    detailed_insights.append("### " + section)
+            
+            # Validate response quality
+            expected_count = len(all_ingredients)
+            actual_count = len(detailed_insights)
+            
+            print(f"📊 Analysis results: {actual_count}/{expected_count} ingredients")
+            
+            if actual_count == 0:
+                print("⚠️ WARNING: No ingredient sections found in AI response")
+                print(f"📄 Response preview: {full_analysis[:500]}...")
+                # Return full response as fallback
+                return [f"### Complete Analysis\n{full_analysis}"]
+            
+            if actual_count < expected_count * 0.7:  # Less than 70%
+                print(f"⚠️ WARNING: Only {actual_count}/{expected_count} ingredients analyzed ({actual_count/expected_count*100:.0f}%)")
+                print(f"Missing: {expected_count - actual_count} ingredients")
+            else:
+                print(f"✅ SUCCESS: {actual_count}/{expected_count} ingredients analyzed ({actual_count/expected_count*100:.0f}%)")
+            
+            return detailed_insights
+            
+        except Exception as e:
+            print(f"❌ CRITICAL: Detailed analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Structured fallback analysis
+            print(f"🔄 Creating structured fallback for {len(all_ingredients)} ingredients")
+            fallback_analyses = []
+            
+            for ing in all_ingredients:
+                name = ing['name']
+                fallback_analyses.append(f"""### {name}
+**What it is**: {name} - a food ingredient (detailed analysis temporarily unavailable)
+**Health Effects**: 
+  - ✅ Benefits: Contains nutritional or functional properties
+  - ⚠️ Concerns: Moderation advised for processed ingredients; consult labels
+**Safety**: Generally recognized as safe (GRAS) when used as directed by manufacturers
+**Usage in Food**: Common ingredient in packaged food products for taste, texture, or preservation
+**Final Verdict**: ⚠️ Use Moderately - Safe in normal amounts; check product labels for specifics
+
+*Note: Comprehensive AI analysis failed. This is a basic safety overview. For detailed information, consult food safety databases.*
+---""")
+            
+            print(f"✅ Generated {len(fallback_analyses)} fallback analyses")
+            return fallback_analyses
 
 
 # Singleton instance

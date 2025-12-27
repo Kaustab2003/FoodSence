@@ -17,6 +17,7 @@ from ai.intent_inference import intent_engine
 from ai.reasoning_engine import reasoning_engine
 from ai.explanation_generator import explanation_generator
 from ai.deception_detector import deception_detector
+from utils.ingredient_parser import smart_ingredient_split
 
 router = APIRouter()
 
@@ -57,6 +58,16 @@ async def analyze_food(request: AnalyzeRequest):
                 detail="At least one ingredient is required"
             )
         
+        # Smart parsing: handle commas inside parentheses
+        if len(request.ingredients) == 1 and ',' in request.ingredients[0]:
+            parsed_ingredients = smart_ingredient_split(request.ingredients[0])
+            print(f"📝 Smart parsing: {len(request.ingredients)} → {len(parsed_ingredients)} ingredients")
+            print(f"   Original: {request.ingredients[0][:100]}...")
+            print(f"   Parsed: {parsed_ingredients[:5]}...")
+            request.ingredients = parsed_ingredients
+        
+        print(f"🔍 Analyzing {len(request.ingredients)} ingredients")
+        
         # Step 1: Infer user intent
         intent_result = intent_engine.analyze(
             ingredients=request.ingredients,
@@ -88,12 +99,13 @@ async def analyze_food(request: AnalyzeRequest):
             "uncertainty_note": reasoning_result.uncertainty_note
         }
         
-        # Step 4: Generate explanations
+        # Step 4: Generate explanations (pass ALL ingredients for comprehensive AI analysis)
         explanation_result = explanation_generator.generate_complete_explanation(
             reasoning_result=reasoning_dict,
             intent_result=intent_result,
             include_eli5=request.include_eli5,
-            language=request.language or "en"
+            language=request.language or "en",
+            original_ingredients=request.ingredients  # Pass ALL ingredients for AI analysis
         )
         
         # Assemble final response
@@ -105,8 +117,11 @@ async def analyze_food(request: AnalyzeRequest):
                 "summary": explanation_result.summary
             },
             
-            # Core insights (3 max)
+            # Core insights (top priority)
             "insights": reasoning_dict["insights"],
+            
+            # COMPREHENSIVE DETAILED ANALYSIS - ALL ingredients analyzed by AI
+            "detailed_insights": explanation_result.detailed_insights,
             
             # Overall health signal
             "health_signal": {

@@ -509,6 +509,7 @@ def get_ingredient_info(ingredient_name: str) -> Optional[IngredientInfo]:
     """
     Retrieve ingredient information from the database.
     Case-insensitive and handles variations.
+    For unknown ingredients, creates a basic entry to ensure all ingredients are analyzed.
     """
     ingredient_lower = ingredient_name.lower().strip()
     
@@ -521,7 +522,17 @@ def get_ingredient_info(ingredient_name: str) -> Optional[IngredientInfo]:
         if ingredient_lower in key or key in ingredient_lower:
             return info
     
-    return None
+    # Create placeholder for unknown ingredients (will be analyzed by AI later)
+    return IngredientInfo(
+        name=ingredient_name,
+        category="unknown",
+        health_impact=f"{ingredient_name} - detailed analysis will be provided",
+        research_confidence="medium",
+        concerns=["Comprehensive analysis needed"],
+        benefits=["Analysis in progress"],
+        safe_limit="Varies by usage",
+        common_in=["Various food products"]
+    )
 
 
 def get_all_ingredients() -> List[str]:
