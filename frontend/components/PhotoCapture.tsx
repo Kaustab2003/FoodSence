@@ -1,12 +1,12 @@
 /**
- * Photo Capture Component with OCR
+ * Photo Capture Component with Vision AI
  * 
- * Opens device camera to capture photos of ingredient labels and extracts text using Tesseract.js
+ * Uses Vision LLMs (Gemini, Qwen-VL, LLaVA) to extract ingredients from images
  */
 
 import { useState, useRef, useEffect } from 'react'
 import { Camera, X, Loader2, RotateCcw, Upload } from 'lucide-react'
-import Tesseract from 'tesseract.js'
+import axios from 'axios'
 import { getSelectedLanguage } from '../utils/languageSupport'
 
 interface PhotoCaptureProps {
@@ -125,37 +125,101 @@ export default function PhotoCapture({ onIngredientsExtracted }: PhotoCapturePro
     }
   }
 
+  const preprocessImage = (imageDataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')!
+        
+        // Increase resolution for better OCR
+        const scale = 2
+        canvas.width = img.width * scale
+        canvas.height = img.height * scale
+        
+        ctx.scale(scale, scale)
+        ctx.drawImage(img, 0, 0)
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        
+        // Get image data for processing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const data = imageData.data
+        
+        // Convert to grayscale and enhance contrast
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+          const contrast = 1.5
+          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+          const adjusted = factor * (gray - 128) + 128
+          const threshold = adjusted > 140 ? 255 : 0
+          
+          data[i] = threshold
+          data[i + 1] = threshold
+          data[i + 2] = threshold
+        }
+        
+        ctx.putImageData(imageData, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      }
+      img.src = imageDataUrl
+    })
+  }
+
   const processImage = async (imageDataUrl: string) => {
     setIsProcessing(true)
     setProgress(0)
 
     try {
-      const result = await Tesseract.recognize(
-        imageDataUrl,
-        'eng',
+      console.log('🤖 Sending to Vision AI (Gemini → Qwen → LLaVA)...')
+      setProgress(10)
+      
+      // Convert data URL to blob
+      const response = await fetch(imageDataUrl)
+      const blob = await response.blob()
+      
+      // Create form data
+      const formData = new FormData()
+      formData.append('image', blob, 'ingredient-photo.jpg')
+      formData.append('language', currentLanguage.code)
+      
+      setProgress(30)
+      
+      // Send to backend vision API
+      const apiResponse = await axios.post(
+        'http://localhost:8000/api/vision-extract',
+        formData,
         {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              setProgress(Math.round(m.progress * 100))
-            }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e) => {
+            const uploaded = Math.round((e.loaded / (e.total || 1)) * 40)
+            setProgress(30 + uploaded)
           }
         }
       )
-
-      const text = result.data.text
       
-      // Extract ingredients section
-      const extractedIngredients = extractIngredients(text)
+      setProgress(100)
       
-      if (extractedIngredients) {
-        onIngredientsExtracted(extractedIngredients)
+      const { ingredients, model_used, confidence } = apiResponse.data
+      
+      console.log('✅ Vision AI Success:', { model_used, confidence })
+      
+      if (ingredients && ingredients.length > 3) {
+        onIngredientsExtracted(ingredients)
+        alert(`✅ Extracted by ${model_used}!\n\n${ingredients.substring(0, 100)}...`)
         handleClose()
       } else {
-        setCameraError('Could not find ingredients in the image. Please try:\n• Better lighting\n• Clear focus on ingredients text\n• Retake photo or type manually')
+        setCameraError('No ingredients found in image. Try:\n• Better lighting\n• Clear focus on label\n• Different angle')
       }
-    } catch (error) {
-      console.error('OCR Error:', error)
-      setCameraError('Failed to read text from image. Please try again or type manually.')
+      
+    } catch (error: any) {
+      console.error('❌ Vision API Error:', error)
+      
+      // Check if it's a network error
+      if (error.code === 'ERR_NETWORK') {
+        setCameraError('Cannot connect to server. Is backend running?')
+      } else {
+        setCameraError(`Vision AI failed: ${error.response?.data?.detail || error.message}\n\nTry manual entry.`)
+      }
     } finally {
       setIsProcessing(false)
       setProgress(0)

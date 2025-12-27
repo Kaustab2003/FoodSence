@@ -12,6 +12,7 @@ import uvicorn
 # Import routes
 from routes.analyze_food import router as analyze_router
 from routes.barcode_lookup import router as barcode_router
+from routes.vision_extract import router as vision_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -32,6 +33,7 @@ app.add_middleware(
 # Register routes
 app.include_router(analyze_router, prefix="/api", tags=["Analysis"])
 app.include_router(barcode_router, prefix="/api", tags=["Barcode"])
+app.include_router(vision_router, prefix="/api", tags=["Vision"])
 
 
 @app.get("/")
