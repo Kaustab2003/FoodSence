@@ -11,9 +11,10 @@ import { getSelectedLanguage } from '../utils/languageSupport'
 
 interface PhotoCaptureProps {
   onIngredientsExtracted: (ingredients: string) => void
+  customButton?: React.ReactNode  // Allow custom trigger button
 }
 
-export default function PhotoCapture({ onIngredientsExtracted }: PhotoCaptureProps) {
+export default function PhotoCapture({ onIngredientsExtracted, customButton }: PhotoCaptureProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isCameraActive, setIsCameraActive] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -170,56 +171,18 @@ export default function PhotoCapture({ onIngredientsExtracted }: PhotoCapturePro
     setProgress(0)
 
     try {
-      console.log('🤖 Sending to Vision AI (Gemini → Qwen → LLaVA)...')
+      console.log('🤖 Sending image to backend...')
       setProgress(10)
       
-      // Convert data URL to blob
-      const response = await fetch(imageDataUrl)
-      const blob = await response.blob()
-      
-      // Create form data
-      const formData = new FormData()
-      formData.append('image', blob, 'ingredient-photo.jpg')
-      formData.append('language', currentLanguage.code)
-      
-      setProgress(30)
-      
-      // Send to backend vision API
-      const apiResponse = await axios.post(
-        'http://localhost:8000/api/vision-extract',
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (e) => {
-            const uploaded = Math.round((e.loaded / (e.total || 1)) * 40)
-            setProgress(30 + uploaded)
-          }
-        }
-      )
-      
+      // For nutrition mode, just return the base64 image
+      // The parent component will handle sending to the nutrition API
       setProgress(100)
-      
-      const { ingredients, model_used, confidence } = apiResponse.data
-      
-      console.log('✅ Vision AI Success:', { model_used, confidence })
-      
-      if (ingredients && ingredients.length > 3) {
-        onIngredientsExtracted(ingredients)
-        alert(`✅ Extracted by ${model_used}!\n\n${ingredients.substring(0, 100)}...`)
-        handleClose()
-      } else {
-        setCameraError('No ingredients found in image. Try:\n• Better lighting\n• Clear focus on label\n• Different angle')
-      }
+      onIngredientsExtracted(imageDataUrl)
+      handleClose()
       
     } catch (error: any) {
-      console.error('❌ Vision API Error:', error)
-      
-      // Check if it's a network error
-      if (error.code === 'ERR_NETWORK') {
-        setCameraError('Cannot connect to server. Is backend running?')
-      } else {
-        setCameraError(`Vision AI failed: ${error.response?.data?.detail || error.message}\n\nTry manual entry.`)
-      }
+      console.error('❌ Image processing error:', error)
+      setCameraError('Failed to process image. Please try again.')
     } finally {
       setIsProcessing(false)
       setProgress(0)
@@ -304,21 +267,29 @@ export default function PhotoCapture({ onIngredientsExtracted }: PhotoCapturePro
 
   return (
     <>
-      <button
-        onClick={handleOpen}
-        className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2"
-      >
-        <Camera className="w-4 h-4" />
-        📸 Capture ingredients photo
-      </button>
+      {customButton ? (
+        <div onClick={handleOpen}>
+          {customButton}
+        </div>
+      ) : (
+        <>
+          <button
+            onClick={handleOpen}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2"
+          >
+            <Camera className="w-4 h-4" />
+            📸 Capture ingredients photo
+          </button>
 
-      <button
-        onClick={openFileUpload}
-        className="text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-2"
-      >
-        <Upload className="w-4 h-4" />
-        📁 Upload ingredients photo
-      </button>
+          <button
+            onClick={openFileUpload}
+            className="text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            📁 Upload ingredients photo
+          </button>
+        </>
+      )}
 
       {/* Hidden file input */}
       <input

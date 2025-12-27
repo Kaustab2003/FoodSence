@@ -14,6 +14,8 @@ export default function Home() {
   const [productName, setProductName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [currentLanguage, setCurrentLanguage] = useState(getSelectedLanguage())
+  const [analysisMode, setAnalysisMode] = useState<'ingredients' | 'nutrition'>('ingredients')
+  const [nutritionImage, setNutritionImage] = useState<string | null>(null)
   
   useEffect(() => {
     // Listen for language changes
@@ -28,8 +30,14 @@ export default function Home() {
   }, [])
 
   const handleAnalyze = async () => {
-    if (!ingredients.trim()) {
+    // Validate based on mode
+    if (analysisMode === 'ingredients' && !ingredients.trim()) {
       alert('Please enter at least one ingredient')
+      return
+    }
+    
+    if (analysisMode === 'nutrition' && !nutritionImage) {
+      alert('Please capture a nutrition facts photo')
       return
     }
 
@@ -48,7 +56,9 @@ export default function Home() {
     // Store in sessionStorage for analyze page
     sessionStorage.setItem('analysis_data', JSON.stringify({
       ingredients: ingredientList,
-      productName: productName || null
+      productName: productName || null,
+      analysisMode: analysisMode,
+      nutritionImage: nutritionImage
     }))
 
     // Navigate to analyze page
@@ -121,10 +131,68 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Mode Selection */}
+        <div className="max-w-3xl mx-auto mb-6 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-md p-4">
+            <p className="text-sm font-medium text-gray-700 mb-3 text-center">
+              What would you like to analyze?
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  setAnalysisMode('ingredients')
+                  setNutritionImage(null)
+                }}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  analysisMode === 'ingredients'
+                    ? 'border-green-500 bg-green-50 shadow-md'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <FileText className={`w-8 h-8 mx-auto mb-2 ${
+                  analysisMode === 'ingredients' ? 'text-green-600' : 'text-gray-400'
+                }`} />
+                <h3 className={`font-semibold ${
+                  analysisMode === 'ingredients' ? 'text-green-700' : 'text-gray-700'
+                }`}>
+                  Ingredient List
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Analyze what's inside
+                </p>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setAnalysisMode('nutrition')
+                  setIngredients('')
+                }}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  analysisMode === 'nutrition'
+                    ? 'border-blue-500 bg-blue-50 shadow-md'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Camera className={`w-8 h-8 mx-auto mb-2 ${
+                  analysisMode === 'nutrition' ? 'text-blue-600' : 'text-gray-400'
+                }`} />
+                <h3 className={`font-semibold ${
+                  analysisMode === 'nutrition' ? 'text-blue-700' : 'text-gray-700'
+                }`}>
+                  Nutrition Facts
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Scan the label
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Main Input Card */}
         <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-8 mb-8 animate-slide-up">
           <h2 className="text-2xl font-semibold mb-6 text-gray-800">
-            What are you considering?
+            {analysisMode === 'ingredients' ? 'Enter Ingredients' : 'Capture Nutrition Facts'}
           </h2>
 
           {/* Product Name (Optional) */}
@@ -141,22 +209,65 @@ export default function Home() {
             />
           </div>
 
-          {/* Ingredients Input */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Ingredients <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={ingredients}
-              onChange={(e) => setIngredients(e.target.value)}
-              placeholder="Enter ingredients (comma or line separated)&#10;Example: sugar, wheat flour, palm oil, salt, vanilla extract"
-              rows={6}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition resize-none"
-            />
-            <p className="text-sm text-gray-500 mt-2">
-              💡 Tip: Just paste from the food label or type them out
-            </p>
-          </div>
+          {/* Conditional Input based on mode */}
+          {analysisMode === 'ingredients' ? (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ingredients <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={ingredients}
+                onChange={(e) => setIngredients(e.target.value)}
+                placeholder="Enter ingredients (comma or line separated)&#10;Example: sugar, wheat flour, palm oil, salt, vanilla extract"
+                rows={6}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition resize-none"
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                💡 Tip: Just paste from the food label or type them out
+              </p>
+            </div>
+          ) : (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nutrition Facts Photo <span className="text-red-500">*</span>
+              </label>
+              
+              {nutritionImage ? (
+                <div className="space-y-4">
+                  <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                    <img 
+                      src={nutritionImage} 
+                      alt="Nutrition facts" 
+                      className="max-h-96 mx-auto rounded-lg shadow-md"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setNutritionImage(null)}
+                    className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                  >
+                    📷 Retake Photo
+                  </button>
+                </div>
+              ) : (
+                <PhotoCapture 
+                  onIngredientsExtracted={(base64Image) => {
+                    setNutritionImage(base64Image)
+                  }}
+                  customButton={
+                    <button className="w-full px-6 py-12 border-2 border-dashed border-blue-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                      <Camera className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                      <p className="text-lg font-semibold text-gray-700">Capture Nutrition Label</p>
+                      <p className="text-sm text-gray-500 mt-2">Click to take or upload photo</p>
+                    </button>
+                  }
+                />
+              )}
+              
+              <p className="text-sm text-gray-500 mt-2">
+                📊 Tip: Make sure the nutrition facts table is clearly visible and well-lit
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="grid grid-cols-1 gap-4 mb-6">

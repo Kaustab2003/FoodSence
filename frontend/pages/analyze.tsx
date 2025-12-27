@@ -4,6 +4,7 @@ import axios from 'axios'
 import { ArrowLeft, Lightbulb } from 'lucide-react'
 import InsightCard from '../components/InsightCard'
 import DetailedIngredientCard from '../components/DetailedIngredientCard'
+import NutritionCard from '../components/NutritionCard'
 import HealthSignal from '../components/HealthSignal'
 import ConfidenceBar from '../components/ConfidenceBar'
 import SurpriseScore from '../components/SurpriseScore'
@@ -29,7 +30,7 @@ export default function AnalyzePage() {
         return
       }
 
-      const { ingredients, productName } = JSON.parse(storedData)
+      const { ingredients, productName, analysisMode, nutritionImage } = JSON.parse(storedData)
 
       // PATENT FEATURE: Get personalized intent hints
       const userPreferences = getPersonalizedIntents()
@@ -38,14 +39,23 @@ export default function AnalyzePage() {
       const selectedLanguage = getSelectedLanguage()
 
       try {
-        // Call backend API with preferences and language
-        const response = await axios.post(`${API_URL}/api/analyze`, {
-          ingredients,
+        // Determine analysis type and prepare request
+        const requestData: any = {
+          ingredients: ingredients || [],
           product_name: productName,
           include_eli5: false,
           user_preferences: userPreferences,
-          language: selectedLanguage.code
-        })
+          language: selectedLanguage.code,
+          analysis_type: analysisMode || 'ingredients'
+        }
+
+        // If nutrition mode, add the image
+        if (analysisMode === 'nutrition' && nutritionImage) {
+          requestData.nutrition_image = nutritionImage
+        }
+
+        // Call backend API
+        const response = await axios.post(`${API_URL}/api/analyze`, requestData)
 
         setAnalysisData(response.data.data)
         setLoading(false)
@@ -53,7 +63,10 @@ export default function AnalyzePage() {
         // Speak summary if voice is enabled
         if (typeof window !== 'undefined' && (window as any).foodSenseSpeak) {
           setTimeout(() => {
-            (window as any).foodSenseSpeak(response.data.data.context.summary)
+            const summary = response.data.data.nutrition_analysis?.health_summary || response.data.data.context?.summary
+            if (summary) {
+              (window as any).foodSenseSpeak(summary)
+            }
           }, 1000)
         }
       } catch (error) {
@@ -127,11 +140,13 @@ export default function AnalyzePage() {
         </button>
 
         {/* Context Summary */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6 animate-fade-in">
-          <p className="text-gray-700 text-lg">
-            {analysisData.context.summary}
-          </p>
-        </div>
+        {analysisData.context && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6 animate-fade-in">
+            <p className="text-gray-700 text-lg">
+              {analysisData.context.summary}
+            </p>
+          </div>
+        )}
 
         {/* PATENT FEATURE: Deception Detection / Surprise Score */}
         {analysisData.deception_analysis && (
@@ -142,15 +157,25 @@ export default function AnalyzePage() {
         )}
 
         {/* Health Signal */}
-        <div className="mb-6 animate-slide-up">
-          <HealthSignal
-            level={analysisData.health_signal.level}
-            icon={analysisData.health_signal.icon}
-          />
-          <div className="mt-3">
-            <ConfidenceBar confidence={analysisData.health_signal.confidence} />
+        {analysisData.health_signal && (
+          <div className="mb-6 animate-slide-up">
+            <HealthSignal
+              level={analysisData.health_signal.level}
+              icon={analysisData.health_signal.icon}
+            />
+            <div className="mt-3">
+              <ConfidenceBar confidence={analysisData.health_signal.confidence} />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* NEW: Nutrition Analysis Display */}
+        {analysisData.nutrition_analysis && analysisData.nutrition_data && (
+          <NutritionCard 
+            analysis={analysisData.nutrition_analysis}
+            nutritionData={analysisData.nutrition_data}
+          />
+        )}
 
         {/* Comprehensive Ingredient Analysis - ALL INGREDIENTS */}
         {analysisData.detailed_insights && analysisData.detailed_insights.length > 0 && (
@@ -173,29 +198,17 @@ export default function AnalyzePage() {
           </div>
         )}
 
-        {/* Main Insights - Top Priorities */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            🎯 Top Priority Concerns
-          </h2>
-          <p className="text-gray-600 mb-4">Quick summary of the most important findings</p>
-          <div className="space-y-4">
-            {analysisData.insights.map((insight: any, idx: number) => (
-              <InsightCard key={idx} insight={insight} />
-            ))}
-          </div>
-        </div>
-
         {/* Trade-Offs */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h3 className="text-xl font-semibold mb-4 text-gray-900">
-            ⚖️ Trade-Offs
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Benefits */}
-            <div>
-              <h4 className="font-medium text-green-700 mb-2">👍 Benefits</h4>
-              {analysisData.trade_offs.benefits.length > 0 ? (
+        {analysisData.trade_offs && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">
+              ⚖️ Trade-Offs
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Benefits */}
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">👍 Benefits</h4>
+                {analysisData.trade_offs.benefits.length > 0 ? (
                 <ul className="space-y-1 text-sm text-gray-700">
                   {analysisData.trade_offs.benefits.map((benefit: string, idx: number) => (
                     <li key={idx} className="flex items-start">
@@ -227,6 +240,7 @@ export default function AnalyzePage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Uncertainty Note */}
         {analysisData.uncertainty_note && (
@@ -246,34 +260,37 @@ export default function AnalyzePage() {
         )}
 
         {/* ELI5 Toggle */}
-        <div className="mb-6">
-          <button
-            onClick={handleELI5}
-            className="w-full md:w-auto px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg transition flex items-center justify-center"
-          >
-            <Lightbulb className="w-5 h-5 mr-2" />
-            {showELI5 ? 'Hide Simple Explanation' : 'Explain Like I\'m 10'}
-          </button>
+        {analysisData.eli5_explanation !== undefined && (
+          <div className="mb-6">
+            <button
+              onClick={handleELI5}
+              className="w-full md:w-auto px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg transition flex items-center justify-center"
+            >
+              <Lightbulb className="w-5 h-5 mr-2" />
+              {showELI5 ? 'Hide Simple Explanation' : 'Explain Like I\'m 10'}
+            </button>
 
-          {showELI5 && eli5Data && (
-            <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-6 animate-slide-up">
-              <h3 className="text-lg font-semibold text-purple-900 mb-3">
-                🎓 Simple Explanation
-              </h3>
-              <div className="text-gray-800 whitespace-pre-line">
-                {eli5Data}
+            {showELI5 && eli5Data && (
+              <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-6 animate-slide-up">
+                <h3 className="text-lg font-semibold text-purple-900 mb-3">
+                  🎓 Simple Explanation
+                </h3>
+                <div className="text-gray-800 whitespace-pre-line">
+                  {eli5Data}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Follow-Up Questions */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-xl font-semibold mb-4 text-gray-900">
-            💬 Want to Know More?
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {analysisData.follow_up_questions.map((fq: any, idx: number) => (
+        {analysisData.follow_up_questions && analysisData.follow_up_questions.length > 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">
+              💬 Want to Know More?
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {analysisData.follow_up_questions.map((fq: any, idx: number) => (
               <button
                 key={idx}
                 className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-left rounded-lg transition text-sm"
@@ -289,6 +306,7 @@ export default function AnalyzePage() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Footer */}
         <div className="text-center mt-12 text-gray-500 text-sm">
