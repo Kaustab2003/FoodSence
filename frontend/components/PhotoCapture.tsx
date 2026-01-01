@@ -5,7 +5,7 @@
  */
 import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
-import { Camera, X, Upload, Loader2 } from 'lucide-react'
+import { Camera, X, Upload, Loader2, RotateCcw } from 'lucide-react'
 import { getSelectedLanguage } from '../utils/languageSupport'
 
 interface PhotoCaptureProps {
