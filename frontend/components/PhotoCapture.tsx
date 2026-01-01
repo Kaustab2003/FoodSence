@@ -3,10 +3,9 @@
  * 
  * Uses Vision LLMs (Gemini, Qwen-VL, LLaVA) to extract ingredients from images
  */
-
-import { useState, useRef, useEffect } from 'react'
-import { Camera, X, Loader2, RotateCcw, Upload } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
+import { Camera, X, Upload, Loader2 } from 'lucide-react'
 import { getSelectedLanguage } from '../utils/languageSupport'
 
 interface PhotoCaptureProps {
@@ -171,50 +170,67 @@ export default function PhotoCapture({ onIngredientsExtracted, customButton }: P
     setProgress(0)
 
     try {
-      console.log('🤖 Sending image to backend...')
+      console.log('🤖 Processing image...')
       setProgress(10)
       
-      // For nutrition mode, just return the base64 image
-      // The parent component will handle sending to the nutrition API
-      setProgress(100)
-      onIngredientsExtracted(imageDataUrl)
-      handleClose()
-      
-    } catch (error: any) {
-      console.error('❌ Image processing error:', error)
+      // Try to extract text from the image using Vision API
+      try {
+        // Convert base64 to blob
+        const blob = await (await fetch(imageDataUrl)).blob()
+        
+        // Create FormData
+        const formData = new FormData()
+        formData.append('image', blob, 'ingredient-photo.jpg')
+        formData.append('language', currentLanguage.code)
+        
+        setProgress(30)
+        console.log('🔍 Extracting text from image...')
+        
+        // Call vision extraction API
+        const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/vision-extract`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        })
+        
+        setProgress(80)
+        
+        if (response.data.success && response.data.ingredients) {
+          console.log('✅ Text extracted:', response.data.ingredients)
+          setProgress(100)
+          onIngredientsExtracted(response.data.ingredients)
+          handleClose()
+          return
+        } else if (response.data.error) {
+          // Show specific error message
+          console.log('⚠️ Vision API error:', response.data.error)
+          setCameraError(response.data.error)
+          setIsProcessing(false)
+          setProgress(0)
+          return
+        }
+      } catch (visionError: any) {
+        console.log('⚠️ Vision extraction failed:', visionError)
+        
+        // Check if it's a quota error
+        if (visionError?.response?.data?.error) {
+          setCameraError(visionError.response.data.error)
+          setIsProcessing(false)
+          setProgress(0)
+          return
+        }
+        
+        // General error handling
+        setCameraError('Failed to extract ingredients. Please try again.')
+        setIsProcessing(false)
+        setProgress(0)
+      }
+    } catch (error) {
+      console.error('Error processing image:', error)
       setCameraError('Failed to process image. Please try again.')
-    } finally {
       setIsProcessing(false)
       setProgress(0)
     }
-  }
-
-  const extractIngredients = (text: string): string | null => {
-    // Look for common ingredient label patterns
-    const patterns = [
-      /ingredients?:\s*(.+?)(?:\n\n|nutrition|allergen|contains|$)/i,
-      /ingredientes?:\s*(.+?)(?:\n\n|nutrición|$)/i,
-      /ingrédients?:\s*(.+?)(?:\n\n|valeur|$)/i,
-    ]
-
-    for (const pattern of patterns) {
-      const match = text.match(pattern)
-      if (match && match[1]) {
-        return match[1].trim()
-      }
-    }
-
-    // If no pattern match, check if the whole text looks like ingredients
-    const lowerText = text.toLowerCase()
-    if (
-      (lowerText.includes('sugar') || lowerText.includes('flour') || 
-       lowerText.includes('water') || lowerText.includes('salt')) &&
-      text.includes(',')
-    ) {
-      return text.trim()
-    }
-
-    return null
   }
 
   const retakePhoto = () => {
@@ -467,6 +483,7 @@ export default function PhotoCapture({ onIngredientsExtracted, customButton }: P
           </div>
         </div>
       )}
+
     </>
   )
 }

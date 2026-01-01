@@ -146,7 +146,7 @@ class ExplanationGenerator:
             except Exception as e:
                 print(f"⚠️ Groq fallback failed: {e}")
         
-        # Try DeepSeek as final fallback
+        # Try DeepSeek as fallback
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         if deepseek_key and self.ai_provider != "deepseek":
             try:
@@ -164,6 +164,41 @@ class ExplanationGenerator:
                 return response.choices[0].message.content
             except Exception as e:
                 print(f"⚠️ DeepSeek fallback failed: {e}")
+        
+        # Try HuggingFace as final fallback
+        hf_key = os.getenv("HUGGINGFACE_API_KEY")
+        if hf_key:
+            try:
+                print("🔄 Trying HuggingFace fallback...")
+                import httpx
+                
+                api_url = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-3B-Instruct"
+                headers = {"Authorization": f"Bearer {hf_key}"}
+                
+                payload = {
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 500,
+                        "temperature": 0.7,
+                        "top_p": 0.95
+                    }
+                }
+                
+                response = httpx.post(api_url, headers=headers, json=payload, timeout=30.0)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if isinstance(result, list) and len(result) > 0:
+                        generated_text = result[0].get("generated_text", "")
+                        print("✅ HuggingFace fallback succeeded")
+                        return generated_text
+                    elif isinstance(result, dict) and "generated_text" in result:
+                        print("✅ HuggingFace fallback succeeded")
+                        return result["generated_text"]
+                
+                print(f"⚠️ HuggingFace returned status {response.status_code}")
+            except Exception as e:
+                print(f"⚠️ HuggingFace fallback failed: {e}")
         
         raise Exception(f"All AI providers failed. Last error: {last_error}")
     
@@ -254,10 +289,15 @@ class ExplanationGenerator:
         
         Uses simple words, short sentences, no jargon.
         """
-        if self.use_ai:
-            return self._generate_eli5_with_ai(insights, trade_offs)
-        else:
-            return self._generate_eli5_rule_based(insights, trade_offs)
+        try:
+            if self.use_ai:
+                return self._generate_eli5_with_ai(insights, trade_offs)
+            else:
+                return self._generate_eli5_rule_based(insights, trade_offs)
+        except Exception as e:
+            print(f"⚠️ ELI5 generation failed completely: {e}")
+            # Always return something useful
+            return "This food has different ingredients. Some are okay, some you should watch out for. It's best to enjoy it sometimes, not all the time!"
     
     def _generate_eli5_rule_based(
         self,
@@ -352,36 +392,11 @@ Limit to 4-5 sentences total.
 """
         
         try:
-            if self.ai_provider == "gemini":
-                response = self.model.generate_content(prompt)
-                return response.text.strip()
-            
-            elif self.ai_provider == "groq":
-                response = self.client.chat.completions.create(
-                    model=self.ai_model,
-                    messages=[
-                        {"role": "system", "content": "You explain food ingredients to children in simple, clear language."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=200
-                )
-                return response.choices[0].message.content.strip()
-            
-            elif self.ai_provider == "deepseek":
-                response = self.client.chat.completions.create(
-                    model=self.ai_model,
-                    messages=[
-                        {"role": "system", "content": "You explain food ingredients to children in simple, clear language."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=200
-                )
-                return response.choices[0].message.content.strip()
-        
+            # Use the retry mechanism with fallbacks
+            return self._call_ai_with_retry(prompt, max_retries=2)
         except Exception as e:
-            print(f"⚠️ AI generation failed: {e}")
+            print(f"⚠️ All AI providers failed for ELI5: {e}")
+            # Fallback to rule-based
             return self._generate_eli5_rule_based(insights, trade_offs)
     
     def generate_follow_up_questions(
@@ -546,12 +561,17 @@ Return as JSON array:
         # ELI5 (optional)
         eli5 = None
         if include_eli5:
-            eli5 = self.generate_eli5_explanation(
-                reasoning_result["insights"],
-                reasoning_result["trade_offs"]
-            )
-            if language != "en" and self.use_ai and eli5:
-                eli5 = self._translate_text(eli5, language)
+            try:
+                eli5 = self.generate_eli5_explanation(
+                    reasoning_result["insights"],
+                    reasoning_result["trade_offs"]
+                )
+                if language != "en" and self.use_ai and eli5:
+                    eli5 = self._translate_text(eli5, language)
+            except Exception as e:
+                print(f"⚠️ ELI5 generation error: {e}")
+                # Fallback to simple explanation
+                eli5 = "This product has some ingredients you should know about. It's best to have it in moderation as part of a balanced diet."
         
         # Follow-ups
         follow_ups = self.generate_follow_up_questions(

@@ -23,6 +23,9 @@ body {
 
 @layer utilities {
   .text-balance {
+    -webkit-text-wrap: balance; /* Safari support */
     text-wrap: balance;
+    /* Fallback for older browsers */
+    max-width: 100%;
   }
 }

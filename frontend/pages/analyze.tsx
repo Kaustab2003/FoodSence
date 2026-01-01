@@ -8,6 +8,7 @@ import NutritionCard from '../components/NutritionCard'
 import HealthSignal from '../components/HealthSignal'
 import ConfidenceBar from '../components/ConfidenceBar'
 import SurpriseScore from '../components/SurpriseScore'
+import LoadingSkeleton from '../components/LoadingSkeleton'
 import { getPersonalizedIntents, trackFollowUpClick } from '../utils/userPreferences'
 import { getSelectedLanguage } from '../utils/languageSupport'
 
@@ -87,40 +88,41 @@ export default function AnalyzePage() {
 
     try {
       const storedData = sessionStorage.getItem('analysis_data')
-      if (!storedData) return
+      if (!storedData) {
+        console.error('No analysis data found in session storage')
+        return
+      }
 
       const { ingredients, productName } = JSON.parse(storedData)
 
+      console.log('🔍 Requesting ELI5 explanation...')
       const response = await axios.post(`${API_URL}/api/analyze/eli5`, {
         ingredients,
         product_name: productName,
         include_eli5: true
       })
 
-      setEli5Data(response.data.eli5_explanation)
-      setShowELI5(true)
-    } catch (error) {
+      console.log('✅ ELI5 response:', response.data)
+      
+      if (response.data.eli5_explanation) {
+        setEli5Data(response.data.eli5_explanation)
+        setShowELI5(true)
+      } else {
+        console.error('No ELI5 explanation in response:', response.data)
+        alert('ELI5 explanation not available. Please try again.')
+      }
+    } catch (error: any) {
       console.error('ELI5 generation failed:', error)
+      if (error.response?.status === 429) {
+        alert('Too many requests. Please wait a moment and try again.')
+      } else {
+        alert('Failed to generate explanation. Please try again.')
+      }
     }
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-center px-4">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-green-600 mx-auto mb-4"></div>
-          <p className="text-xl font-semibold text-gray-800 mb-2">Analyzing ingredients with AI...</p>
-          <p className="text-sm text-gray-600 mb-4">🧠 Comprehensive analysis in progress</p>
-          <div className="bg-white rounded-lg p-4 shadow-md max-w-md mx-auto">
-            <p className="text-xs text-gray-500">
-              ⏱️ Analyzing all ingredients may take 30-60 seconds
-              <br />
-              🔍 Each ingredient gets detailed health, safety, and usage analysis
-            </p>
-          </div>
-        </div>
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   if (!analysisData) {
