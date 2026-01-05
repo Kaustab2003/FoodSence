@@ -249,18 +249,52 @@ export default function Home() {
                   </button>
                 </div>
               ) : (
-                <PhotoCapture 
-                  onIngredientsExtracted={(base64Image) => {
-                    setNutritionImage(base64Image)
-                  }}
-                  customButton={
-                    <button className="w-full px-6 py-12 border-2 border-dashed border-blue-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
-                      <Camera className="w-16 h-16 mx-auto mb-4 text-blue-500" />
-                      <p className="text-lg font-semibold text-gray-700">Capture Nutrition Label</p>
-                      <p className="text-sm text-gray-500 mt-2">Click to take or upload photo</p>
-                    </button>
-                  }
-                />
+                <div className="space-y-4">
+                  <PhotoCapture 
+                    onIngredientsExtracted={(base64Image) => {
+                      setNutritionImage(base64Image)
+                    }}
+                    customButton={
+                      <button className="w-full px-6 py-12 border-2 border-dashed border-blue-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all">
+                        <Camera className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                        <p className="text-lg font-semibold text-gray-700">Capture Nutrition Label</p>
+                        <p className="text-sm text-gray-500 mt-2">Click to take or upload photo</p>
+                      </button>
+                    }
+                  />
+                  
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white text-gray-500">or</span>
+                    </div>
+                  </div>
+
+                  <label className="block">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const reader = new FileReader()
+                          reader.onloadend = () => {
+                            setNutritionImage(reader.result as string)
+                          }
+                          reader.readAsDataURL(file)
+                        }
+                      }}
+                    />
+                    <div className="w-full px-6 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer">
+                      <FileText className="w-12 h-12 mx-auto mb-3 text-gray-500" />
+                      <p className="text-base font-semibold text-gray-700 text-center">Upload from Device</p>
+                      <p className="text-sm text-gray-500 mt-1 text-center">Click to browse files</p>
+                    </div>
+                  </label>
+                </div>
               )}
               
               <p className="text-sm text-gray-500 mt-2">

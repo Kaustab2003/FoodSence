@@ -18,6 +18,7 @@ from datetime import datetime
 from routes.analyze_food import router as analyze_router
 from routes.barcode_lookup import router as barcode_router
 from routes.vision_extract import router as vision_router
+from routes.nutrition_extract import router as nutrition_router
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/hour"])
@@ -62,6 +63,7 @@ async def validate_environment():
 app.include_router(analyze_router, prefix="/api", tags=["Analysis"])
 app.include_router(barcode_router, prefix="/api", tags=["Barcode"])
 app.include_router(vision_router, prefix="/api", tags=["Vision"])
+app.include_router(nutrition_router, prefix="/api/nutrition", tags=["Nutrition"])
 
 
 @app.get("/")
